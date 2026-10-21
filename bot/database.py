@@ -5,8 +5,10 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from sqlalchemy import text
 
 from bot.models.base import Base
+import bot.models  # noqa: F401 — register every model before create_all
 
 _engine = None
 _sessionmaker = None
@@ -24,6 +26,10 @@ def init_db(database_url: str) -> None:
 
 async def create_tables() -> None:
     async with _engine.begin() as conn:
+        if conn.dialect.name == "postgresql":
+            # Railway may briefly run old and new replicas together during deploys.
+            # Serialize create_all so they cannot race to create the same tables/types.
+            await conn.execute(text("SELECT pg_advisory_xact_lock(1397701711)"))
         await conn.run_sync(Base.metadata.create_all)
 
 
